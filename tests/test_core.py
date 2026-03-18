@@ -78,6 +78,27 @@ def test_trash_requires_trash_root(tmp_path, video_group):
         fs.trash(video_group)
 
 
+def test_link_creates_relative_symlinks(tmp_fs, video_group, tmp_path):
+    link_dir = tmp_path / "views" / "Season 1"
+    result = tmp_fs.link(video_group, link_dir)
+    assert result is not None
+    primary_link = link_dir / "episode.mp4"
+    assert primary_link.is_symlink()
+    # Relative target — resolve() must point to original
+    assert primary_link.resolve() == video_group.resolve()
+    assert (link_dir / "episode.md").is_symlink()
+    assert (link_dir / "episode.properties").is_symlink()
+
+
+def test_link_custom_name(tmp_fs, video_group, tmp_path):
+    link_dir = tmp_path / "views"
+    result = tmp_fs.link(video_group, link_dir, link_name="Tatort - s2021e01.mp4")
+    assert result is not None
+    assert (link_dir / "Tatort - s2021e01.mp4").is_symlink()
+    # Sidecars use original names
+    assert (link_dir / "episode.md").is_symlink()
+
+
 def test_edition_tag_sidecar_discovery(tmp_path, tmp_fs):
     """Sidecar without edition tag should be discovered for primary with edition tag."""
     primary = tmp_path / "Episode {edition-1080p}.mp4"

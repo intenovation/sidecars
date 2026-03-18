@@ -1,0 +1,128 @@
+Metadata-Version: 2.4
+Name: sidecarfs
+Version: 0.1.0
+Summary: Safe filesystem operations that keep primary files and their sidecars in sync
+Author: Intenovation
+License: MIT
+Keywords: filesystem,sidecar,metadata,safe-delete,trash
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+
+# sidecarFS
+
+Safe filesystem operations for files that have sidecar companions.
+
+A **sidecar** is any file that shares the same base name as a primary file
+but carries a companion extension (`.properties`, `.json`, `.md`).  Examples:
+
+```
+video.mp4          ← primary
+video.md           ← sidecar (description / metadata markdown)
+video.properties   ← sidecar (key=value metadata)
+video.json         ← sidecar (structured metadata)
+```
+
+## Why sidecarFS?
+
+Plain `shutil.move()` / `os.remove()` operate on single files.  When you
+move a video without its `.md` sidecar, metadata is orphaned.  When you
+delete a file without trashing the sidecar, you lose both the file and its
+companion.  `sidecarFS` solves this by always operating on the **group**
+(primary + sidecars) as a single unit.
+
+### Core rules
+
+1. **No silent deletes** — every removal goes through a `_trash/` folder so
+   it can be undone.
+2. **Atomic groups** — move / copy / trash always includes the primary file
+   and all its sidecars.
+3. **Dry-run first** — every mutating operation accepts `dry_run=True` which
+   logs the plan without touching the filesystem.
+
+## Installation
+
+```bash
+pip install sidecarfs
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/intenovation/sidecarfs
+pip install -e sidecarfs
+```
+
+## Quick start
+
+```python
+from pathlib import Path
+from sidecarfs import SidecarFS
+
+fs = SidecarFS(trash_root=Path("/media/_trash"), dry_run=False)
+
+# Move a video + its sidecars to a new folder
+fs.move(Path("/media/downloads/episode.mp4"), Path("/media/shows/Season 1/"))
+
+# Safe-delete: moves to _trash/<date>/... instead of deleting
+fs.trash(Path("/media/shows/Season 1/episode.mp4"))
+
+# Discover what sidecars exist for a file
+group = fs.find_group(Path("/media/shows/Season 1/episode.mp4"))
+print(group)  # FileGroup(episode.mp4, sidecars=[episode.md, episode.properties])
+```
+
+## API
+
+### `SidecarFS(trash_root=None, dry_run=False)`
+
+Main class.
+
+| Method | Description |
+|--------|-------------|
+| `find_group(primary)` | Discover a `FileGroup` for `primary` |
+| `move(source, target_dir)` | Move primary + sidecars into `target_dir` |
+| `move_group(group, target_dir)` | Move a pre-built `FileGroup` |
+| `copy(source, target_dir)` | Copy primary + sidecars into `target_dir` |
+| `trash(source, trash_root=None)` | Move to trash (safe delete) |
+| `trash_group(group, trash_root=None)` | Move a pre-built group to trash |
+
+### `FileGroup`
+
+```python
+@dataclass
+class FileGroup:
+    primary: Path
+    sidecars: List[Path]
+
+    def all_files(self) -> List[Path]: ...
+    def exists(self) -> bool: ...
+    def total_size(self) -> int: ...
+```
+
+### Sidecar detection
+
+By default sidecar extensions are `.properties`, `.json`, and `.md`.  The
+set is exported as `sidecarfs.SIDECAR_EXTENSIONS` if you need to inspect it.
+
+Files with edition tags are also handled:
+
+```
+Episode {edition-1080p}.mp4   ← primary
+Episode.md                    ← sidecar (matched via stripped base name)
+```
+
+## License
+
+MIT

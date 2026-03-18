@@ -1,0 +1,2 @@
+[console_scripts]
+scfs = sidecarfs.cli:main

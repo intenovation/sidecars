@@ -3,6 +3,7 @@ Core filesystem wrapper that keeps primary files and their sidecars in sync.
 """
 
 import logging
+import os
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -192,6 +193,94 @@ class SidecarFS:
 
         logger.info(f"TRASH_GROUP {group.primary} → {trash_dir}")
         return self._move_group(group, trash_dir)
+
+    # ------------------------------------------------------------------
+    # Symlink
+    # ------------------------------------------------------------------
+
+    def link(
+        self,
+        source: Path,
+        link_dir: Path,
+        link_name: Optional[str] = None,
+        relative: bool = True,
+    ) -> Optional["FileGroup"]:
+        """
+        Create symlinks in *link_dir* pointing at *source* and its sidecars.
+
+        This is the sidecar-aware ``ln -s``: one symlink per file in the group
+        so that tools looking for ``episode.md`` in the view directory find it
+        even when the real file lives in a ``_store/`` hierarchy.
+
+        Parameters
+        ----------
+        source:
+            Primary file to link to.
+        link_dir:
+            Directory where symlinks will be created.
+        link_name:
+            Override the symlink name for the primary file.  Sidecars keep
+            their original names.  If omitted, ``source.name`` is used.
+        relative:
+            When True (default) the symlink target is a relative path from
+            *link_dir* to the real file — more portable across mounts.
+            When False an absolute target path is used.
+
+        Returns a FileGroup of the created symlink paths, or None on failure.
+        """
+        source = Path(source)
+        link_dir = Path(link_dir)
+        group = self.find_group(source)
+
+        if self.dry_run:
+            primary_link_name = link_name or source.name
+            logger.info(
+                f"DRY RUN link: {primary_link_name} + {len(group.sidecars)} sidecar link(s) → {link_dir}"
+            )
+            return group
+
+        link_dir.mkdir(parents=True, exist_ok=True)
+        created: List[Path] = []
+
+        try:
+            primary_link_name = link_name or source.name
+            primary_link = link_dir / primary_link_name
+            target = (
+                Path(os.path.relpath(source, link_dir)) if relative else source.resolve()
+            )
+            if primary_link.exists() or primary_link.is_symlink():
+                primary_link.unlink()
+            primary_link.symlink_to(target)
+            created.append(primary_link)
+            logger.debug(f"Linked {primary_link} → {target}")
+
+            sidecar_links: List[Path] = []
+            for sc in group.sidecars:
+                sc_link = link_dir / sc.name
+                sc_target = (
+                    Path(os.path.relpath(sc, link_dir)) if relative else sc.resolve()
+                )
+                if sc_link.exists() or sc_link.is_symlink():
+                    sc_link.unlink()
+                sc_link.symlink_to(sc_target)
+                created.append(sc_link)
+                sidecar_links.append(sc_link)
+                logger.debug(f"Linked {sc_link} → {sc_target}")
+
+            logger.info(
+                f"Linked {primary_link_name} + {len(sidecar_links)} sidecar link(s) → {link_dir}"
+            )
+            return FileGroup(primary=primary_link, sidecars=sidecar_links)
+
+        except Exception as exc:
+            logger.error(f"Link failed for {source}: {exc}")
+            for lnk in created:
+                try:
+                    if lnk.is_symlink():
+                        lnk.unlink()
+                except Exception:
+                    pass
+            return None
 
     # ------------------------------------------------------------------
     # Internal helpers
