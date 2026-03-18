@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from sidecarfs import SidecarFS, FileGroup
+from sidecars import SidecarFS, FileGroup
 
 
 @pytest.fixture

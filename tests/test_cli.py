@@ -4,7 +4,7 @@ import pytest
 from click.testing import CliRunner
 from pathlib import Path
 
-from sidecarfs.cli import cli
+from sidecars.cli import cli
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-# sidecarFS
+# sidecars
 
 Safe filesystem operations for files that have sidecar companions.
 
@@ -12,12 +12,12 @@ video.properties   ← sidecar (key=value metadata)
 video.json         ← sidecar (structured metadata)
 ```
 
-## Why sidecarFS?
+## Why sidecars?
 
 Plain `shutil.move()` / `os.remove()` operate on single files.  When you
 move a video without its `.md` sidecar, metadata is orphaned.  When you
 delete a file without trashing the sidecar, you lose both the file and its
-companion.  `sidecarFS` solves this by always operating on the **group**
+companion.  `sidecars` solves this by always operating on the **group**
 (primary + sidecars) as a single unit.
 
 ### Core rules
@@ -32,21 +32,21 @@ companion.  `sidecarFS` solves this by always operating on the **group**
 ## Installation
 
 ```bash
-pip install sidecarfs
+pip install sidecars
 ```
 
 Or from source:
 
 ```bash
-git clone https://github.com/intenovation/sidecarfs
-pip install -e sidecarfs
+git clone https://github.com/intenovation/sidecars
+pip install -e sidecars
 ```
 
 ## Quick start
 
 ```python
 from pathlib import Path
-from sidecarfs import SidecarFS
+from sidecars import SidecarFS
 
 fs = SidecarFS(trash_root=Path("/media/_trash"), dry_run=False)
 
@@ -92,7 +92,7 @@ class FileGroup:
 ### Sidecar detection
 
 By default sidecar extensions are `.properties`, `.json`, and `.md`.  The
-set is exported as `sidecarfs.SIDECAR_EXTENSIONS` if you need to inspect it.
+set is exported as `sidecars.SIDECAR_EXTENSIONS` if you need to inspect it.
 
 Files with edition tags are also handled:
 

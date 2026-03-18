@@ -1,5 +1,5 @@
 """
-sidecarFS — safe filesystem operations for files with sidecar companions.
+sidecars — safe filesystem operations for files with sidecar companions.
 
 A sidecar is any file with the same base name as the primary file but with
 a companion extension (.properties, .json, .md).  All operations keep the
