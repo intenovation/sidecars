@@ -157,6 +157,11 @@ class SidecarFS:
         resolved_trash_root = Path(resolved_trash_root)
         group = self.find_group(source)
 
+        # Symlinks are just pointers — the real data lives elsewhere (e.g. _store/).
+        # Removing a symlink causes no data loss, so we skip the trash and unlink directly.
+        if source.is_symlink():
+            return self._unlink_group_symlinks(group)
+
         # Build a trash destination that mirrors the original relative layout.
         # Destination: <trash_root>/<YYYY-MM-DD>/<original-relative-path-parent>/
         datestamp = datetime.now().strftime("%Y-%m-%d")
@@ -184,6 +189,10 @@ class SidecarFS:
             )
 
         resolved_trash_root = Path(resolved_trash_root)
+
+        if group.primary.is_symlink():
+            return self._unlink_group_symlinks(group)
+
         datestamp = datetime.now().strftime("%Y-%m-%d")
         try:
             rel = group.primary.parent.relative_to(resolved_trash_root.parent)
@@ -285,6 +294,29 @@ class SidecarFS:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _unlink_group_symlinks(self, group: FileGroup) -> Optional[FileGroup]:
+        """Directly unlink a symlink group (primary + sidecar symlinks).
+
+        Symlinks carry no data — the real content lives at the link target
+        (typically in _store/).  No trash needed; just remove the pointers.
+        """
+        if self.dry_run:
+            logger.info(f"DRY RUN unlink symlink: {group.primary.name} + {len(group.sidecars)} sidecar link(s)")
+            return group
+
+        removed: List[Path] = []
+        for f in group.all_files():
+            if f.is_symlink() or f.exists():
+                try:
+                    f.unlink(missing_ok=True)
+                    removed.append(f)
+                    logger.debug(f"Unlinked symlink {f}")
+                except Exception as exc:
+                    logger.error(f"Failed to unlink {f}: {exc}")
+
+        logger.info(f"Unlinked symlink {group.primary.name} + {len(group.sidecars)} companion(s)")
+        return group
 
     def _move_group(self, group: FileGroup, target_dir: Path) -> Optional[FileGroup]:
         """Move all files in group to target_dir, return new FileGroup."""

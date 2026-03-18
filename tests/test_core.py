@@ -99,6 +99,40 @@ def test_link_custom_name(tmp_fs, video_group, tmp_path):
     assert (link_dir / "episode.md").is_symlink()
 
 
+def test_trash_symlink_unlinks_without_trashing(tmp_path, tmp_fs):
+    """Symlinks should be unlinked directly — no trash copy created."""
+    # Real files in a store dir
+    store_dir = tmp_path / "_store" / "ep"
+    store_dir.mkdir(parents=True)
+    real_video = store_dir / "video.mp4"
+    real_md = store_dir / "video.md"
+    real_video.write_bytes(b"\x00" * 512)
+    real_md.write_text("# Episode")
+
+    # View dir with symlinks pointing at store
+    view_dir = tmp_path / "views"
+    view_dir.mkdir()
+    link = view_dir / "episode.mp4"
+    link_md = view_dir / "episode.md"
+    link.symlink_to(real_video)
+    link_md.symlink_to(real_md)
+
+    result = tmp_fs.trash(link)
+    assert result is not None
+
+    # Symlinks gone
+    assert not link.exists() and not link.is_symlink()
+    assert not link_md.exists() and not link_md.is_symlink()
+
+    # Real files in _store untouched
+    assert real_video.exists()
+    assert real_md.exists()
+
+    # Nothing in trash
+    trash_root = tmp_path / "_trash"
+    assert not trash_root.exists() or not list(trash_root.rglob("*.mp4"))
+
+
 def test_edition_tag_sidecar_discovery(tmp_path, tmp_fs):
     """Sidecar without edition tag should be discovered for primary with edition tag."""
     primary = tmp_path / "Episode {edition-1080p}.mp4"
