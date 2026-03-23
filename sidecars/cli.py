@@ -1,9 +1,9 @@
 """
-scfs — command-line interface for sidecarFS.
+scfs — command-line interface for sidecars.
 
 All destructive operations move files to a trash folder instead of deleting
-them.  The default trash location is ~/.sidecarfs_trash/ and can be overridden
-with the --trash-root option or the SIDECARFS_TRASH env variable.
+them.  The default trash location is ~/.sidecars_trash/ and can be overridden
+with the --trash-root option or the SIDECARS_TRASH env variable.
 """
 
 import os
@@ -15,13 +15,13 @@ import click
 
 from .core import SidecarFS, SIDECAR_EXTENSIONS
 
-_DEFAULT_TRASH = Path.home() / ".sidecarfs_trash"
+_DEFAULT_TRASH = Path.home() / ".sidecars_trash"
 
 
 def _get_trash_root(trash_root: Optional[str]) -> Path:
     if trash_root:
         return Path(trash_root)
-    env = os.environ.get("SIDECARFS_TRASH")
+    env = os.environ.get("SIDECARS_TRASH")
     if env:
         return Path(env)
     return _DEFAULT_TRASH
@@ -186,7 +186,7 @@ def cmd_cp(source: str, target: str, dry_run: bool):
 
 @cli.command("rm")
 @click.argument("sources", nargs=-1, required=True, type=click.Path(exists=True))
-@click.option("--trash-root", default=None, help="Trash folder (default: ~/.sidecarfs_trash)")
+@click.option("--trash-root", default=None, help="Trash folder (default: ~/.sidecars_trash)")
 @click.option("-n", "--dry-run", is_flag=True, help="Show what would be trashed without moving")
 def cmd_rm(sources: tuple, trash_root: Optional[str], dry_run: bool):
     """Safely remove files by moving them (and sidecars) to trash.
@@ -194,8 +194,8 @@ def cmd_rm(sources: tuple, trash_root: Optional[str], dry_run: bool):
     Files are NEVER permanently deleted — they go to the trash folder and
     can be recovered manually.
 
-    Default trash location: ~/.sidecarfs_trash/
-    Override: --trash-root /path/to/trash  or  SIDECARFS_TRASH env variable.
+    Default trash location: ~/.sidecars_trash/
+    Override: --trash-root /path/to/trash  or  SIDECARS_TRASH env variable.
 
     \b
     Example:
