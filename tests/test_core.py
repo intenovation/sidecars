@@ -142,3 +142,62 @@ def test_edition_tag_sidecar_discovery(tmp_path, tmp_fs):
     group = tmp_fs.find_group(primary)
     sidecar_names = {s.name for s in group.sidecars}
     assert "Episode.md" in sidecar_names
+
+
+# ---------------------------------------------------------------------------
+# Configurable sidecar patterns (mediathek view sidecars) + unlink()
+# ---------------------------------------------------------------------------
+
+def _view_fs():
+    """SidecarFS configured for mediathek view entries."""
+    return SidecarFS(stem_suffixes=[".nfo", "-thumb.jpg"], name_suffixes=[".view.md"])
+
+
+def test_name_suffix_sidecar_discovery(tmp_path):
+    """A note that keeps the primary's extension ({name}.view.md) is discovered."""
+    store = tmp_path / "store"; store.mkdir()
+    (store / "video.mp4").write_bytes(b"x" * 16)
+    d = tmp_path / "season"; d.mkdir()
+    primary = d / "Ep - s01e08 - Frau Irmler.mp4"
+    primary.symlink_to(store / "video.mp4")
+    note = d / "Ep - s01e08 - Frau Irmler.mp4.view.md"; note.write_text("note")
+    nfo = d / "Ep - s01e08 - Frau Irmler.nfo"; nfo.write_text("nfo")
+    thumb = d / "Ep - s01e08 - Frau Irmler-thumb.jpg"; thumb.symlink_to(store / "video.mp4")
+
+    names = {s.name for s in _view_fs().find_group(primary).sidecars}
+    assert names == {note.name, nfo.name, thumb.name}
+
+
+def test_unlink_removes_view_group_but_keeps_store(tmp_path):
+    store = tmp_path / "store"; store.mkdir()
+    real = store / "video.mp4"; real.write_bytes(b"x" * 16)
+    d = tmp_path / "season"; d.mkdir()
+    primary = d / "Ep - s01e08 - Frau Irmler.mp4"; primary.symlink_to(real)
+    (d / "Ep - s01e08 - Frau Irmler.mp4.view.md").write_text("note")
+    (d / "Ep - s01e08 - Frau Irmler.nfo").write_text("nfo")
+    (d / "Ep - s01e08 - Frau Irmler-thumb.jpg").symlink_to(real)
+
+    _view_fs().unlink(primary)
+    assert list(d.iterdir()) == []          # entry + all sidecars gone
+    assert real.exists()                     # store content untouched
+
+
+def test_unlink_cleans_orphaned_sidecar_when_primary_missing(tmp_path):
+    """A dangling .view.md whose primary is already gone is still cleaned."""
+    d = tmp_path / "season"; d.mkdir()
+    orphan = d / "Ep - s01e08 - Frau Irmler.mp4.view.md"; orphan.write_text("note")
+    missing_primary = d / "Ep - s01e08 - Frau Irmler.mp4"
+    assert not (missing_primary.exists() or missing_primary.is_symlink())
+
+    _view_fs().unlink(missing_primary)
+    assert list(d.iterdir()) == []
+
+
+def test_default_patterns_ignore_nfo(tmp_path):
+    """Default SidecarFS must not treat .nfo as a sidecar (email-organizer safety)."""
+    (tmp_path / "msg.eml").write_text("e")
+    (tmp_path / "msg.json").write_text("j")
+    (tmp_path / "msg.nfo").write_text("keep me")
+    names = {s.name for s in SidecarFS().find_group(tmp_path / "msg.eml").sidecars}
+    assert names == {"msg.json"}
+    assert (tmp_path / "msg.nfo").exists()

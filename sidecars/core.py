@@ -49,15 +49,31 @@ class SidecarFS:
         per-call override is supplied.
     dry_run:
         When True, log planned operations but do not touch the filesystem.
+    stem_suffixes:
+        Strings appended to the primary's *stem* to form sidecar names, e.g.
+        ``".properties"`` → ``{stem}.properties`` or ``"-thumb.jpg"`` →
+        ``{stem}-thumb.jpg``.  Defaults to :data:`SIDECAR_EXTENSIONS`, so the
+        historical behaviour is unchanged for callers that don't override it.
+    name_suffixes:
+        Strings appended to the primary's *full filename* (including its own
+        extension) to form sidecar names, e.g. ``".view.md"`` →
+        ``{name}.view.md``.  Needed for notes that keep the primary's extension
+        (a mediathek view symlink ``Episode.mp4`` → ``Episode.mp4.view.md``).
+        Empty by default.
     """
 
     def __init__(
         self,
         trash_root: Optional[Path] = None,
         dry_run: bool = False,
+        stem_suffixes: Optional[List[str]] = None,
+        name_suffixes: Optional[List[str]] = None,
     ):
         self.trash_root = Path(trash_root) if trash_root else None
         self.dry_run = dry_run
+        self.stem_suffixes = tuple(stem_suffixes) if stem_suffixes is not None \
+            else tuple(sorted(SIDECAR_EXTENSIONS))
+        self.name_suffixes = tuple(name_suffixes) if name_suffixes is not None else ()
 
     # ------------------------------------------------------------------
     # Discovery
@@ -70,19 +86,27 @@ class SidecarFS:
         base = primary.stem
         parent = primary.parent
 
-        for ext in SIDECAR_EXTENSIONS:
-            candidate = parent / f"{base}{ext}"
-            if candidate.exists() and candidate != primary:
+        def _add(candidate: Path) -> None:
+            # A sidecar may be a real file OR a symlink (e.g. a -thumb.jpg that
+            # points into an artwork cache); is_symlink() catches broken links too.
+            if candidate == primary or candidate in sidecars:
+                return
+            if candidate.is_symlink() or candidate.exists():
                 sidecars.append(candidate)
+
+        # stem-based sidecars: {stem}{suffix}  (.properties, .nfo, -thumb.jpg, …)
+        for suf in self.stem_suffixes:
+            _add(parent / f"{base}{suf}")
+        # full-name sidecars: {name}{suffix}   (Episode.mp4 → Episode.mp4.view.md)
+        for suf in self.name_suffixes:
+            _add(parent / f"{primary.name}{suf}")
 
         # Also match sidecars when the primary has an edition tag, e.g.
         # "Episode {edition-1080p}.mp4" → "Episode.md"
         if "{edition-" in base:
             clean_base = base.split("{edition-")[0].rstrip()
-            for ext in SIDECAR_EXTENSIONS:
-                candidate = parent / f"{clean_base}{ext}"
-                if candidate.exists() and candidate not in sidecars and candidate != primary:
-                    sidecars.append(candidate)
+            for suf in self.stem_suffixes:
+                _add(parent / f"{clean_base}{suf}")
 
         return FileGroup(primary=primary, sidecars=sidecars)
 
@@ -202,6 +226,25 @@ class SidecarFS:
 
         logger.info(f"TRASH_GROUP {group.primary} → {trash_dir}")
         return self._move_group(group, trash_dir)
+
+    # ------------------------------------------------------------------
+    # Unlink (in-place removal, no trash)
+    # ------------------------------------------------------------------
+
+    def unlink(self, source: Path) -> Optional[FileGroup]:
+        """Remove *source* and all its sidecars in place — no trash folder.
+
+        Intended for ephemeral symlink entries whose real data lives elsewhere
+        (e.g. mediathek view symlinks into ``_store/``): removing the pointer
+        loses no data, so no trash_root is required. The primary and every
+        discovered sidecar (including real-file notes such as ``.view.md`` and
+        ``.nfo``) are removed as one group. Missing files are skipped, so this
+        also cleans up an **orphaned** sidecar group whose primary is already
+        gone.
+
+        For non-symlink primaries carrying real data, prefer :meth:`trash`.
+        """
+        return self._unlink_group_symlinks(self.find_group(Path(source)))
 
     # ------------------------------------------------------------------
     # Symlink
